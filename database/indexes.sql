@@ -6,7 +6,7 @@
 -- =====================================================================
 
 -- 1. Index on Account Lookups
-CREATE INDEX idx_account_acc_number ON Account(account_number);
+
 CREATE INDEX idx_account_customer_id ON Account(customer_id);
 CREATE INDEX idx_account_branch_id ON Account(branch_id);
 
@@ -16,8 +16,6 @@ CREATE INDEX idx_tx_to_account ON Transaction(to_account_id);
 CREATE INDEX idx_tx_date ON Transaction(transaction_date DESC);
 
 -- 3. Index on Customer Searches
-CREATE INDEX idx_customer_email ON Customer(email);
-CREATE INDEX idx_customer_phone ON Customer(phone);
 
 -- 4. Index on Loan Relationships
 CREATE INDEX idx_loan_customer ON Loan(customer_id);
