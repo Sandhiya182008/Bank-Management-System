@@ -58,7 +58,7 @@ app.get('/api/info', (req, res) => {
 // 3. Mount Modular Routes
 // Note: Individual team members will implement their routes on separate Git feature branches.
 app.use('/api/customers', require('./routes/customerRoutes'));
-// app.use('/api/accounts', require('./routes/accountRoutes'));
+app.use('/api/accounts', require('./routes/accountRoutes'));
 // app.use('/api/transactions', require('./routes/transactionRoutes'));
 // app.use('/api/loans', require('./routes/loanRoutes'));
 // app.use('/api/employees', require('./routes/employeeRoutes'));
