@@ -1,20 +1,18 @@
 # Bank Management System
 
-A college-level DBMS project designed for second-year Computer Science and Engineering (CSE).
-
 This project demonstrates core relational database principles using **PostgreSQL** with explicit parameterized SQL queries, connected to a modular **Node.js (Express)** backend and a clean, responsive web interface.
 
----
+
 
 ## Team Members & Module Responsibilities
 
 | # | Name | Assigned Role | Primary Module & Files |
 | :- | :--- | :--- | :--- |
-| **1** | **Sandhiya** *(Lead)* | **Database Design & Integration** | `database/*`, `backend/config/db.js`, PR Reviews & Merging |
+| **1** | **Sandhiya** *(Lead)* | **Database Design & Integration/Testing** | `database/*`, `backend/config/db.js`, PR Reviews & Merging |
 | **2** | **Sadhana** | **Customer & Account Module** | Customer & Account CRUD, Account balance lookup |
-| **3** | **Shivarakshana** | **Transaction Module** | Deposit, withdrawal, ACID fund transfer with rollback |
-| **4** | **Pavi** | **Loan, Employee & Branch Module** | Loan application & repayment, Branch & Employee directory |
-| **5** | **Resh** | **Frontend, Dashboard & Testing** | UI pages, dashboard analytics, charts, API testing guide |
+| **3** | **Shivarakkshana** | **Transaction Module & Authentication** | Deposit, withdrawal, ACID fund transfer with rollback |
+| **4** | **Pavithra** | **Loan, Employee & Branch Module** | Loan application & repayment, Branch & Employee directory |
+| **5** | **Reshma** | **Frontend, Dashboard & Testing** | UI pages, dashboard analytics, charts, API testing guide |
 
 ---
 
@@ -43,7 +41,7 @@ The database schema consists of **8 tables** normalized up to Third Normal Form 
 
 ---
 
-## DBMS Features Showcased for College Viva
+## DBMS Features 
 
 1. **3NF Normalization**: Complete separation of entities without partial or transitive dependencies.
 2. **Integrity Constraints**: `PRIMARY KEY`, `FOREIGN KEY (ON DELETE RESTRICT)`, `UNIQUE`, `NOT NULL`, and `CHECK` constraints (`balance >= 0`, `amount > 0`).
@@ -155,12 +153,13 @@ To prevent merge conflicts, all team members follow this beginner-friendly branc
    git checkout main
    git pull origin main
    ```
-2. **Create your feature branch:**
-   - Sandhiya: `feature/database-core-sandhiya`
-   - Sadhana: `feature/customer-account-sadhana`
-   - Shivarakshana: `feature/transactions-shivarakshana`
-   - Pavi: `feature/loan-employee-pavi`
-   - Resh: `feature/ui-dashboard-resh`
+2.**Create your feature branch**:
+
+- Sandhiya: feature/database-integration-testing-sandhiya
+- Sadhana: feature/customer-account-sadhana
+- Shivarakkshana: feature/transactions-authentication-shivarakkshana
+- Pavithra: feature/loan-employee-branch-pavithra
+- Reshma: feature/frontend-api-integration-reshma
 
    *Example command:*
    ```bash
