@@ -60,6 +60,7 @@ app.get('/api/info', (req, res) => {
 app.use('/api/customers', require('./routes/customerRoutes'));
 app.use('/api/accounts', require('./routes/accountRoutes'));
 app.use('/api/transactions', require('./routes/transactionRoutes'));
+app.use('/api/branches', require('./routes/branchRoutes'));
 // app.use('/api/loans', require('./routes/loanRoutes'));
 // app.use('/api/employees', require('./routes/employeeRoutes'));
 // app.use('/api/dashboard', require('./routes/dashboardRoutes'));
