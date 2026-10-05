@@ -8,6 +8,7 @@
 
 -- Drop existing tables in reverse dependency order for clean reinstalls if needed
 DROP TABLE IF EXISTS Audit_Log CASCADE;
+DROP TABLE IF EXISTS "User" CASCADE;
 DROP TABLE IF EXISTS Loan_Payment CASCADE;
 DROP TABLE IF EXISTS Loan CASCADE;
 DROP TABLE IF EXISTS Transaction CASCADE;
@@ -138,7 +139,29 @@ CREATE TABLE Employee (
     CONSTRAINT chk_employee_salary CHECK (salary > 0.00)
 );
 
--- 8. Audit_Log Table (Academic Showcase for Database Triggers)
+-- 8. User Table (Authentication)
+CREATE TABLE "User" (
+    user_id SERIAL PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    customer_id INT,
+    employee_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Constraints
+    CONSTRAINT fk_user_customer FOREIGN KEY (customer_id) 
+        REFERENCES Customer(customer_id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_employee FOREIGN KEY (employee_id) 
+        REFERENCES Employee(employee_id) ON DELETE CASCADE,
+    CONSTRAINT chk_user_role CHECK (role IN ('Customer', 'Employee')),
+    CONSTRAINT chk_user_entity CHECK (
+        (role = 'Customer' AND customer_id IS NOT NULL AND employee_id IS NULL) OR
+        (role = 'Employee' AND employee_id IS NOT NULL AND customer_id IS NULL)
+    )
+);
+
+-- 9. Audit_Log Table (Academic Showcase for Database Triggers)
 CREATE TABLE Audit_Log (
     log_id SERIAL PRIMARY KEY,
     account_id INT,
