@@ -128,9 +128,9 @@ const depositMoney = async (req, res) => {
         client = await db.getClient();
         await client.query('BEGIN');
 
-        // Lock account row using SELECT ... FOR UPDATE
+        // Lock account row using SELECT ... FOR UPDATE (fetching customer_id for ownership verification)
         const accountResult = await client.query(
-            'SELECT account_id, account_number, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
+            'SELECT account_id, account_number, customer_id, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
             [account_id]
         );
 
@@ -143,6 +143,17 @@ const depositMoney = async (req, res) => {
         }
 
         const account = accountResult.rows[0];
+
+        // Ownership Check: Customer may deposit ONLY into an account belonging to req.user.customer_id
+        if (req.user && req.user.role === 'Customer') {
+            if (Number(account.customer_id) !== Number(req.user.customer_id)) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to deposit into an account you do not own.'
+                });
+            }
+        }
 
         // Check account status
         if (account.status !== 'Active') {
@@ -228,9 +239,9 @@ const withdrawMoney = async (req, res) => {
         client = await db.getClient();
         await client.query('BEGIN');
 
-        // Lock account row using SELECT ... FOR UPDATE
+        // Lock account row using SELECT ... FOR UPDATE (fetching customer_id for ownership verification)
         const accountResult = await client.query(
-            'SELECT account_id, account_number, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
+            'SELECT account_id, account_number, customer_id, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
             [account_id]
         );
 
@@ -243,6 +254,17 @@ const withdrawMoney = async (req, res) => {
         }
 
         const account = accountResult.rows[0];
+
+        // Ownership Check: Customer may withdraw ONLY from an account belonging to req.user.customer_id
+        if (req.user && req.user.role === 'Customer') {
+            if (Number(account.customer_id) !== Number(req.user.customer_id)) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to withdraw from an account you do not own.'
+                });
+            }
+        }
 
         // Check account status
         if (account.status !== 'Active') {
@@ -357,12 +379,12 @@ const transferMoney = async (req, res) => {
         const secondLockId = Math.max(Number(from_account_id), Number(to_account_id));
 
         const firstLockResult = await client.query(
-            'SELECT account_id, account_number, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
+            'SELECT account_id, account_number, customer_id, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
             [firstLockId]
         );
 
         const secondLockResult = await client.query(
-            'SELECT account_id, account_number, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
+            'SELECT account_id, account_number, customer_id, balance, status FROM Account WHERE account_id = $1 FOR UPDATE',
             [secondLockId]
         );
 
@@ -393,6 +415,18 @@ const transferMoney = async (req, res) => {
                 success: false,
                 message: `Receiver account with ID ${to_account_id} not found.`
             });
+        }
+
+        // Ownership Check: Customer can transfer funds ONLY from an account they own.
+        // Destination account may belong to any customer (never require destination to belong to sender).
+        if (req.user && req.user.role === 'Customer') {
+            if (Number(senderAccount.customer_id) !== Number(req.user.customer_id)) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to transfer funds from an account you do not own.'
+                });
+            }
         }
 
         // Verify Active status for both accounts
@@ -477,7 +511,7 @@ const transferMoney = async (req, res) => {
  */
 const getAllTransactions = async (req, res) => {
     try {
-        const queryText = `
+        let queryText = `
             SELECT
                 t.transaction_id,
                 t.transaction_ref,
@@ -492,10 +526,18 @@ const getAllTransactions = async (req, res) => {
             FROM Transaction t
             LEFT JOIN Account fa ON t.from_account_id = fa.account_id
             LEFT JOIN Account ta ON t.to_account_id = ta.account_id
-            ORDER BY t.transaction_date DESC, t.transaction_id DESC
         `;
+        const params = [];
 
-        const result = await db.query(queryText);
+        // Scoping for Customer: return only transactions involving customer's accounts
+        if (req.user && req.user.role === 'Customer') {
+            queryText += ` WHERE fa.customer_id = $1 OR ta.customer_id = $1`;
+            params.push(req.user.customer_id);
+        }
+
+        queryText += ` ORDER BY t.transaction_date DESC, t.transaction_id DESC`;
+
+        const result = await db.query(queryText, params);
 
         return res.status(200).json({
             success: true,
@@ -532,15 +574,17 @@ const getTransactionById = async (req, res) => {
                 t.transaction_date,
                 t.from_account_id,
                 fa.account_number AS from_account_number,
+                fa.customer_id AS from_customer_id,
                 t.to_account_id,
-                ta.account_number AS to_account_number
+                ta.account_number AS to_account_number,
+                ta.customer_id AS to_customer_id
             FROM Transaction t
             LEFT JOIN Account fa ON t.from_account_id = fa.account_id
             LEFT JOIN Account ta ON t.to_account_id = ta.account_id
             WHERE t.transaction_id = $1
         `;
 
-        const result = await db.query(queryText, [id]);
+        const result = await db.query(queryText, [parseInt(id, 10)]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({
@@ -549,9 +593,28 @@ const getTransactionById = async (req, res) => {
             });
         }
 
+        const txn = result.rows[0];
+
+        // Ownership Check: Customer can view transaction only if they own sender or receiver account
+        if (req.user && req.user.role === 'Customer') {
+            const isSender = Number(txn.from_customer_id) === Number(req.user.customer_id);
+            const isReceiver = Number(txn.to_customer_id) === Number(req.user.customer_id);
+
+            if (!isSender && !isReceiver) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to view this transaction.'
+                });
+            }
+        }
+
+        // Clean up internal customer_id tracking fields to maintain exact API contract
+        delete txn.from_customer_id;
+        delete txn.to_customer_id;
+
         return res.status(200).json({
             success: true,
-            data: result.rows[0]
+            data: txn
         });
     } catch (err) {
         return handleDbError(err, res, 'retrieve transaction by ID');
@@ -573,6 +636,28 @@ const getTransactionsByAccountId = async (req, res) => {
     }
 
     try {
+        // Ownership Check: verify account exists and check customer ownership
+        const accountCheck = await db.query(
+            'SELECT account_id, customer_id FROM Account WHERE account_id = $1',
+            [parseInt(accountId, 10)]
+        );
+
+        if (accountCheck.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `Account with ID ${accountId} not found.`
+            });
+        }
+
+        if (req.user && req.user.role === 'Customer') {
+            if (Number(accountCheck.rows[0].customer_id) !== Number(req.user.customer_id)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to view transactions for an account you do not own.'
+                });
+            }
+        }
+
         const queryText = `
             SELECT
                 t.transaction_id,
@@ -592,7 +677,7 @@ const getTransactionsByAccountId = async (req, res) => {
             ORDER BY t.transaction_date DESC, t.transaction_id DESC
         `;
 
-        const result = await db.query(queryText, [accountId]);
+        const result = await db.query(queryText, [parseInt(accountId, 10)]);
 
         return res.status(200).json({
             success: true,

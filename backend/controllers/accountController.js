@@ -208,11 +208,13 @@ const createAccount = async (req, res) => {
  * Method: GET
  * Route: /api/accounts
  *
- * Fetches all accounts ordered by account_id ascending.
+ * Fetches accounts ordered by account_id ascending.
+ * Employee: retrieves all accounts across the bank.
+ * Customer: scoped strictly to accounts belonging to req.user.customer_id.
  * Enriches data with customer and branch details via JOINs.
  */
 const getAllAccounts = async (req, res) => {
-    const sql = `
+    let sql = `
         SELECT
             a.account_id,
             a.account_number,
@@ -234,11 +236,19 @@ const getAllAccounts = async (req, res) => {
         FROM Account a
         JOIN Customer c ON a.customer_id = c.customer_id
         JOIN Branch b ON a.branch_id = b.branch_id
-        ORDER BY a.account_id ASC;
     `;
+    const params = [];
+
+    // Role-based scoping: Customers receive only their own accounts
+    if (req.user && req.user.role === 'Customer') {
+        sql += ` WHERE a.customer_id = $1`;
+        params.push(req.user.customer_id);
+    }
+
+    sql += ` ORDER BY a.account_id ASC;`;
 
     try {
-        const result = await db.query(sql);
+        const result = await db.query(sql, params);
         return res.status(200).json({
             success: true,
             count: result.rows.length,
@@ -256,6 +266,7 @@ const getAllAccounts = async (req, res) => {
  *
  * Validates account_id as positive integer.
  * Returns account along with joined customer and branch information.
+ * Enforces ownership: Customer can only view their own account (403 otherwise).
  * Returns 404 if the account is not found.
  */
 const getAccountById = async (req, res) => {
@@ -304,9 +315,21 @@ const getAccountById = async (req, res) => {
             });
         }
 
+        const account = result.rows[0];
+
+        // Ownership Check: Customer can only access their own account
+        if (req.user && req.user.role === 'Customer') {
+            if (Number(account.customer_id) !== Number(req.user.customer_id)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to view this account.'
+                });
+            }
+        }
+
         return res.status(200).json({
             success: true,
-            data: result.rows[0]
+            data: account
         });
     } catch (err) {
         return handleDbError(err, res, `fetch account with ID ${id}`);
