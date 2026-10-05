@@ -7,6 +7,7 @@
 // =====================================================================
 
 const jwt = require('jsonwebtoken');
+const db = require('../config/db');
 
 /**
  * Middleware to authenticate requests via JWT Bearer token.
@@ -116,10 +117,67 @@ const requireCustomer = authorizeRoles('Customer');
  */
 const requireEmployee = authorizeRoles('Employee');
 
+/**
+ * Reusable middleware to restrict access to specific Employee sub-roles
+ * stored in the Employee database table (e.g. 'Manager', 'Loan Officer').
+ *
+ * @param {...string} allowedSubRoles - Allowed employee sub-roles (e.g., 'Manager', 'Loan Officer')
+ * @returns {Function} Express middleware function
+ */
+const requireEmployeeSubRoles = (...allowedSubRoles) => {
+    return async (req, res, next) => {
+        if (!req.user || req.user.role !== 'Employee' || !req.user.employee_id) {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Forbidden: Access restricted to employees.'
+            });
+        }
+
+        try {
+            const result = await db.query(
+                'SELECT role FROM Employee WHERE employee_id = $1',
+                [req.user.employee_id]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(403).json({
+                    status: 'error',
+                    message: 'Forbidden: Employee record not found.'
+                });
+            }
+
+            const currentRole = result.rows[0].role;
+            if (!allowedSubRoles.includes(currentRole)) {
+                return res.status(403).json({
+                    status: 'error',
+                    message: `Forbidden: Operation restricted to role(s): ${allowedSubRoles.join(', ')}. Current role: ${currentRole}`
+                });
+            }
+
+            req.user.employee_subrole = currentRole;
+            next();
+        } catch (err) {
+            console.error('Error verifying employee sub-role:', err.message);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Internal server error verifying employee authorization.'
+            });
+        }
+    };
+};
+
+/**
+ * Specific shortcut middleware restricting loan approval/rejection/updates
+ * exclusively to Loan Officers and Managers.
+ */
+const requireLoanApprover = requireEmployeeSubRoles('Loan Officer', 'Manager');
+
 module.exports = {
     authenticateToken,
     authorizeRoles,
     requireRole: authorizeRoles, // Alias for flexibility
     requireCustomer,
-    requireEmployee
+    requireEmployee,
+    requireEmployeeSubRoles,
+    requireLoanApprover
 };
