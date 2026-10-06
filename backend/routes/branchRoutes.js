@@ -7,11 +7,13 @@ const {
     updateBranch
 } = require('../controllers/branchController');
 
+const { authenticateToken, requireEmployee } = require('../middleware/authMiddleware');
+
 const router = express.Router();
 
-router.post('/', createBranch);
-router.get('/', getAllBranches);
-router.get('/:id', getBranchById);
-router.put('/:id', updateBranch);
+router.post('/', authenticateToken, requireEmployee, createBranch);
+router.get('/', authenticateToken, requireEmployee, getAllBranches);
+router.get('/:id', authenticateToken, requireEmployee, getBranchById);
+router.put('/:id', authenticateToken, requireEmployee, updateBranch);
 
 module.exports = router;
