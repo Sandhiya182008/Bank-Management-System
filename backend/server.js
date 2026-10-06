@@ -10,6 +10,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const db = require('./config/db');
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -56,12 +57,14 @@ app.get('/api/info', (req, res) => {
 
 // 3. Mount Modular Routes
 // Note: Individual team members will implement their routes on separate Git feature branches.
+app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/customers', require('./routes/customerRoutes'));
 app.use('/api/accounts', require('./routes/accountRoutes'));
 app.use('/api/transactions', require('./routes/transactionRoutes'));
 app.use('/api/branches', require('./routes/branchRoutes'));
 app.use('/api/employees', require('./routes/employeeRoutes'));
 app.use('/api/loans', require('./routes/loanRoutes'));
+app.use('/api/loan-payments', require('./routes/loanPaymentRoutes'));
 // app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 
 // Global 404 Handler for undefined API routes

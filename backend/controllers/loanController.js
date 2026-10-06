@@ -32,6 +32,17 @@ const handleDbError = (error, res) => {
   });
 };
 
+/**
+ * 1. Create a new Loan / Loan Application
+ * POST /api/loans
+ *
+ * Customer:
+ *  - Must only apply for themselves (forces customer_id = req.user.customer_id)
+ *  - Must always start with status = 'Applied' (ignores any client-supplied status)
+ * Employee:
+ *  - Can create a loan for any valid customer_id
+ *  - Status defaults to 'Applied' if not provided
+ */
 const createLoan = async (req, res) => {
   try {
     const {
@@ -46,9 +57,29 @@ const createLoan = async (req, res) => {
       applied_date
     } = req.body;
 
+    // Determine target customer_id and initial status based on role
+    let targetCustomerId;
+    let targetStatus;
+
+    if (req.user && req.user.role === 'Customer') {
+      // Force customer_id from verified JWT; ignore any customer_id in req.body
+      targetCustomerId = Number(req.user.customer_id);
+      // Customer-created loans must strictly start with status = 'Applied'
+      targetStatus = 'Applied';
+    } else {
+      // For Employee: validate customer_id provided in body
+      if (!isValidPositiveInteger(customer_id)) {
+        return res.status(400).json({
+          message: 'Invalid or missing customer ID'
+        });
+      }
+      targetCustomerId = Number(customer_id);
+      targetStatus = status || 'Applied';
+    }
+
     if (
       !loan_number ||
-      !isValidPositiveInteger(customer_id) ||
+      !isValidPositiveInteger(targetCustomerId) ||
       !isValidPositiveInteger(branch_id) ||
       !VALID_LOAN_TYPES.includes(loan_type) ||
       !isValidPositiveNumber(loan_amount) ||
@@ -68,13 +99,13 @@ const createLoan = async (req, res) => {
        RETURNING *`,
       [
         loan_number.trim(),
-        Number(customer_id),
+        targetCustomerId,
         Number(branch_id),
         loan_type,
         Number(loan_amount),
         Number(interest_rate),
         Number(duration_months),
-        status || 'Applied',
+        targetStatus,
         applied_date || null
       ]
     );
@@ -88,10 +119,16 @@ const createLoan = async (req, res) => {
   }
 };
 
+/**
+ * 2. Get All Loans
+ * GET /api/loans
+ *
+ * Employee: retrieves all loans across the bank.
+ * Customer: scoped strictly to loans belonging to req.user.customer_id.
+ */
 const getAllLoans = async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT
+    let sql = `SELECT
          l.loan_id,
          l.loan_number,
          l.customer_id,
@@ -106,9 +143,18 @@ const getAllLoans = async (req, res) => {
          l.applied_date
        FROM loan l
        JOIN customer c ON l.customer_id = c.customer_id
-       JOIN branch b ON l.branch_id = b.branch_id
-       ORDER BY l.loan_id`
-    );
+       JOIN branch b ON l.branch_id = b.branch_id`;
+    const params = [];
+
+    // Role-based scoping: Customers receive only their own loans
+    if (req.user && req.user.role === 'Customer') {
+      sql += ` WHERE l.customer_id = $1`;
+      params.push(req.user.customer_id);
+    }
+
+    sql += ` ORDER BY l.loan_id`;
+
+    const result = await pool.query(sql, params);
 
     return res.status(200).json(result.rows);
   } catch (error) {
@@ -120,6 +166,13 @@ const getAllLoans = async (req, res) => {
   }
 };
 
+/**
+ * 3. Get Loan by ID
+ * GET /api/loans/:id
+ *
+ * Employee: can view any loan.
+ * Customer: can view only their own loan (403 if belonging to another customer).
+ */
 const getLoanById = async (req, res) => {
   try {
     const loanId = Number(req.params.id);
@@ -157,7 +210,18 @@ const getLoanById = async (req, res) => {
       });
     }
 
-    return res.status(200).json(result.rows[0]);
+    const loan = result.rows[0];
+
+    // Ownership Check: Customer can view only their own loan
+    if (req.user && req.user.role === 'Customer') {
+      if (Number(loan.customer_id) !== Number(req.user.customer_id)) {
+        return res.status(403).json({
+          message: 'Forbidden: You are not authorized to view this loan'
+        });
+      }
+    }
+
+    return res.status(200).json(loan);
   } catch (error) {
     console.error('Get loan error:', error);
 
@@ -167,8 +231,22 @@ const getLoanById = async (req, res) => {
   }
 };
 
+/**
+ * 4. Update Loan (Status, Terms, Approval/Rejection)
+ * PUT /api/loans/:id
+ *
+ * Restricted to Loan Officers and Managers.
+ * Customers receive 403 Forbidden.
+ */
 const updateLoan = async (req, res) => {
   try {
+    // Defense-in-depth: Customers are strictly forbidden from updating/approving loans
+    if (req.user && req.user.role === 'Customer') {
+      return res.status(403).json({
+        message: 'Forbidden: Customers are not authorized to update or approve loans'
+      });
+    }
+
     const loanId = Number(req.params.id);
 
     if (!isValidPositiveInteger(loanId)) {
