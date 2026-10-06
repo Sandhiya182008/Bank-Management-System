@@ -189,6 +189,13 @@ const handleDbError = (err, res, actionDescription = 'process request') => {
  * Validates required fields and catches duplicate email/phone (23505).
  */
 const createCustomer = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Creating customer profiles is restricted to employees.'
+        });
+    }
+
     const validation = validateCustomerInput(req.body);
     if (!validation.isValid) {
         return res.status(400).json({
@@ -223,9 +230,16 @@ const createCustomer = async (req, res) => {
  * Method: GET
  * Route: /api/customers
  *
- * Fetches all registered customers ordered by customer_id ascending.
+ * Fetches all registered customers ordered by customer_id ascending. (Employee-only)
  */
 const getAllCustomers = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Listing all customers is restricted to employees.'
+        });
+    }
+
     const sql = `
         SELECT customer_id, first_name, last_name, email, phone, address, date_of_birth, created_at
         FROM Customer
@@ -250,6 +264,8 @@ const getAllCustomers = async (req, res) => {
  * Route: /api/customers/:id
  *
  * Validates customer_id as positive integer and retrieves the matching record.
+ * Customers are strictly authorized to view ONLY their own customer profile (req.user.customer_id).
+ * Returns 403 if Customer attempts to access another customer's profile.
  * Returns 404 if customer does not exist.
  */
 const getCustomerById = async (req, res) => {
@@ -260,6 +276,16 @@ const getCustomerById = async (req, res) => {
             success: false,
             message: 'Invalid customer ID. Customer ID must be a positive integer.'
         });
+    }
+
+    // Role-based authorization: Customers can access ONLY their own profile
+    if (req.user && req.user.role === 'Customer') {
+        if (!req.user.customer_id || Number(id) !== Number(req.user.customer_id)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Forbidden: You are authorized to access only your own customer profile.'
+            });
+        }
     }
 
     const sql = `
@@ -293,10 +319,17 @@ const getCustomerById = async (req, res) => {
  * Method: PUT
  * Route: /api/customers/:id
  *
- * Validates customer_id and input payload, then updates the customer record.
+ * Validates customer_id and input payload, then updates the customer record. (Employee-only)
  * Handles duplicate constraints (23505) and returns 404 if customer not found.
  */
 const updateCustomer = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Updating customer records is restricted to employees.'
+        });
+    }
+
     const { id } = req.params;
 
     if (!isValidPositiveInteger(id)) {
@@ -354,11 +387,18 @@ const updateCustomer = async (req, res) => {
  * Method: DELETE
  * Route: /api/customers/:id
  *
- * Validates customer_id and deletes the customer record.
+ * Validates customer_id and deletes the customer record. (Employee-only)
  * Handles foreign-key restriction error (23503) if customer has linked accounts/loans.
  * Returns 404 if customer not found.
  */
 const deleteCustomer = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Deleting customer records is restricted to employees.'
+        });
+    }
+
     const { id } = req.params;
 
     if (!isValidPositiveInteger(id)) {
@@ -400,12 +440,19 @@ const deleteCustomer = async (req, res) => {
  * Method: GET
  * Route: /api/customers/search
  *
- * Supports flexible parameterized search queries:
+ * Supports flexible parameterized search queries (Employee-only):
  *  - General query parameter (?q=...): Searches across first_name, last_name,
  *    combined full name, email, and phone.
  *  - Targeted parameters: ?name=..., ?email=..., ?phone=...
  */
 const searchCustomers = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Customer search is restricted to employees.'
+        });
+    }
+
     const { q, name, email, phone } = req.query;
 
     const conditions = [];

@@ -108,6 +108,13 @@ const handleDbError = (err, res, actionDescription = 'process account request') 
  * Optional fields: balance (default 0.00), status (default 'Active')
  */
 const createAccount = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Creating bank accounts is restricted to employees.'
+        });
+    }
+
     const { account_number, customer_id, branch_id, account_type, balance, status } = req.body || {};
 
     // 1. Validate required fields existence
@@ -346,6 +353,13 @@ const getAccountById = async (req, res) => {
  * Handles duplicate account_number (23505) and foreign-key restrictions (23503).
  */
 const updateAccount = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Updating account records or status is restricted to employees.'
+        });
+    }
+
     const { id } = req.params;
 
     if (!isValidPositiveInteger(id)) {
@@ -499,6 +513,13 @@ const updateAccount = async (req, res) => {
  * Returns 400 validation error if no search parameter is supplied.
  */
 const searchAccounts = async (req, res) => {
+    if (req.user && req.user.role !== 'Employee') {
+        return res.status(403).json({
+            success: false,
+            message: 'Forbidden: Account search is restricted to employees.'
+        });
+    }
+
     const { account_number, q } = req.query;
     const searchTerm = (account_number || q || '').trim();
 

@@ -4,7 +4,7 @@
 // Team Member: Sadhana
 // Routes: Account Routes (backend/routes/accountRoutes.js)
 // Description: REST API route definitions for Account entity operations
-//              and search with role-based route protection.
+//              and search with Phase 3 role-based route authorization security.
 // =====================================================================
 
 const express = require('express');
