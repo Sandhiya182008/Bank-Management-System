@@ -84,17 +84,23 @@ const register = async (req, res) => {
             });
         }
 
-        // 4. Validate role constraint ('Customer' or 'Employee')
-        if (role !== 'Customer' && role !== 'Employee') {
+        // 4. Validate role constraint (Public registration is restricted to 'Customer' role only)
+        if (role === 'Employee') {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Forbidden: Employee accounts cannot be created through public registration.'
+            });
+        }
+
+        if (role !== 'Customer') {
             return res.status(400).json({
                 status: 'error',
-                message: "Validation failed: Role must be either 'Customer' or 'Employee'."
+                message: "Validation failed: Role must be 'Customer'."
             });
         }
 
         // 5. Validate entity linkage constraint:
         //    Customer -> customer_id is positive INT, employee_id must be null/empty
-        //    Employee -> employee_id is positive INT, customer_id must be null/empty
         let targetCustomerId = null;
         let targetEmployeeId = null;
 
@@ -112,20 +118,6 @@ const register = async (req, res) => {
                 });
             }
             targetCustomerId = parseInt(customer_id, 10);
-        } else if (role === 'Employee') {
-            if (!isValidPositiveInteger(employee_id)) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: "Validation failed: For 'Employee' role, a valid positive employee_id is required."
-                });
-            }
-            if (customer_id !== undefined && customer_id !== null && String(customer_id).trim() !== '') {
-                return res.status(400).json({
-                    status: 'error',
-                    message: "Validation failed: For 'Employee' role, customer_id must be null or omitted."
-                });
-            }
-            targetEmployeeId = parseInt(employee_id, 10);
         }
 
         const normalizedEmail = email.trim().toLowerCase();
@@ -163,28 +155,6 @@ const register = async (req, res) => {
                 return res.status(409).json({
                     status: 'error',
                     message: `Conflict: A user account is already registered for Customer ID ${targetCustomerId}.`
-                });
-            }
-        } else if (role === 'Employee') {
-            const employeeCheck = await db.query(
-                'SELECT employee_id FROM Employee WHERE employee_id = $1',
-                [targetEmployeeId]
-            );
-            if (employeeCheck.rows.length === 0) {
-                return res.status(404).json({
-                    status: 'error',
-                    message: `Not Found: Employee with ID ${targetEmployeeId} does not exist.`
-                });
-            }
-
-            const existingEmployeeUser = await db.query(
-                'SELECT user_id FROM "User" WHERE employee_id = $1',
-                [targetEmployeeId]
-            );
-            if (existingEmployeeUser.rows.length > 0) {
-                return res.status(409).json({
-                    status: 'error',
-                    message: `Conflict: A user account is already registered for Employee ID ${targetEmployeeId}.`
                 });
             }
         }
