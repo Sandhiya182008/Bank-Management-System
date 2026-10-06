@@ -17,27 +17,30 @@ const {
     getLoanPaymentById
 } = require('../controllers/loanPaymentController');
 
+// Import authentication middleware
+const { authenticateToken } = require('../middleware/authMiddleware');
+
 // =====================================================================
 // Loan Payment REST API Route Definitions
 // =====================================================================
 
-// 1. Record a loan payment
+// 1. Record a loan payment (Customer: own loan; Employee: any valid loan)
 // POST /api/loan-payments
-router.post('/', recordLoanPayment);
+router.post('/', authenticateToken, recordLoanPayment);
 
-// 2. Retrieve all loan payments
+// 2. Retrieve all loan payments (Employee: all; Customer: own payments only)
 // GET /api/loan-payments
-router.get('/', getAllLoanPayments);
+router.get('/', authenticateToken, getAllLoanPayments);
 
-// 3. Retrieve all payments for a specific loan
+// 3. Retrieve all payments for a specific loan (Employee: any loan; Customer: own loan only)
 // GET /api/loan-payments/loan/:loanId
 // NOTE FOR VIVA: /loan/:loanId MUST be defined BEFORE /:id to prevent
 // route collisions with generic /:id.
-router.get('/loan/:loanId', getPaymentsByLoan);
+router.get('/loan/:loanId', authenticateToken, getPaymentsByLoan);
 
-// 4. Retrieve a specific loan payment by ID
+// 4. Retrieve a specific loan payment by ID (Employee: any; Customer: own payment only)
 // GET /api/loan-payments/:id
-router.get('/:id', getLoanPaymentById);
+router.get('/:id', authenticateToken, getLoanPaymentById);
 
 // =====================================================================
 // Export Router

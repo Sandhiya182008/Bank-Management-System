@@ -140,10 +140,10 @@ const recordLoanPayment = async (req, res) => {
         finalMode = matched;
     }
 
-    // 4. Verify loan exists in database
+    // 4. Verify loan exists in database and check authorization
     try {
         const loanCheck = await db.query(
-            'SELECT loan_id, loan_number, status, loan_amount FROM Loan WHERE loan_id = $1;',
+            'SELECT loan_id, loan_number, customer_id, status, loan_amount FROM Loan WHERE loan_id = $1;',
             [parseInt(loan_id, 10)]
         );
 
@@ -152,6 +152,18 @@ const recordLoanPayment = async (req, res) => {
                 success: false,
                 message: `Invalid loan: Loan with ID ${loan_id} does not exist.`
             });
+        }
+
+        const loan = loanCheck.rows[0];
+
+        // Ownership Check: Customer can only record payments for their own loan
+        if (req.user && req.user.role === 'Customer') {
+            if (!req.user.customer_id || Number(loan.customer_id) !== Number(req.user.customer_id)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'You are not authorized to record a payment for this loan.'
+                });
+            }
         }
 
         const sql = `
@@ -172,8 +184,8 @@ const recordLoanPayment = async (req, res) => {
             message: 'Loan payment recorded successfully.',
             data: {
                 ...result.rows[0],
-                loan_number: loanCheck.rows[0].loan_number,
-                loan_status: loanCheck.rows[0].status
+                loan_number: loan.loan_number,
+                loan_status: loan.status
             }
         });
     } catch (err) {
@@ -186,11 +198,13 @@ const recordLoanPayment = async (req, res) => {
  * Method: GET
  * Route: /api/loan-payments
  *
- * Retrieves all loan payment records ordered by payment_date descending.
+ * Retrieves loan payment records ordered by payment_date descending.
+ * Employee: retrieves all loan payment records across the bank.
+ * Customer: scoped strictly to loan payments for loans owned by req.user.customer_id.
  * Enriches data with loan and customer details via JOINs.
  */
 const getAllLoanPayments = async (req, res) => {
-    const sql = `
+    let sql = `
         SELECT
             lp.payment_id,
             lp.loan_id,
@@ -210,11 +224,26 @@ const getAllLoanPayments = async (req, res) => {
         JOIN Loan l ON lp.loan_id = l.loan_id
         JOIN Customer c ON l.customer_id = c.customer_id
         JOIN Branch b ON l.branch_id = b.branch_id
-        ORDER BY lp.payment_date DESC, lp.payment_id DESC;
     `;
+    const params = [];
+
+    // Role-based scoping: Customers receive payment records for their own loans only
+    if (req.user && req.user.role === 'Customer') {
+        if (!req.user.customer_id) {
+            return res.status(200).json({
+                success: true,
+                count: 0,
+                data: []
+            });
+        }
+        sql += ` WHERE l.customer_id = $1`;
+        params.push(req.user.customer_id);
+    }
+
+    sql += ` ORDER BY lp.payment_date DESC, lp.payment_id DESC;`;
 
     try {
-        const result = await db.query(sql);
+        const result = await db.query(sql, params);
         return res.status(200).json({
             success: true,
             count: result.rows.length,
@@ -231,6 +260,7 @@ const getAllLoanPayments = async (req, res) => {
  * Route: /api/loan-payments/loan/:loanId
  *
  * Retrieves all payment history for a specific loan.
+ * Enforces ownership: Customer can only view payment history for their own loan (403 otherwise).
  * Returns 404 if the loan does not exist.
  */
 const getPaymentsByLoan = async (req, res) => {
@@ -249,6 +279,7 @@ const getPaymentsByLoan = async (req, res) => {
             `SELECT 
                 l.loan_id, 
                 l.loan_number, 
+                l.customer_id,
                 l.loan_type, 
                 l.loan_amount, 
                 l.status,
@@ -264,6 +295,18 @@ const getPaymentsByLoan = async (req, res) => {
                 success: false,
                 message: `Loan with ID ${loanId} not found.`
             });
+        }
+
+        const loan = loanCheck.rows[0];
+
+        // Ownership Check: Customer can only view payment history for their own loan
+        if (req.user && req.user.role === 'Customer') {
+            if (!req.user.customer_id || Number(loan.customer_id) !== Number(req.user.customer_id)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to view payment history for this loan.'
+                });
+            }
         }
 
         const sql = `
@@ -288,11 +331,11 @@ const getPaymentsByLoan = async (req, res) => {
         return res.status(200).json({
             success: true,
             loan_id: parseInt(loanId, 10),
-            loan_number: loanCheck.rows[0].loan_number,
-            customer_name: loanCheck.rows[0].customer_name,
-            loan_type: loanCheck.rows[0].loan_type,
-            loan_amount: parseFloat(loanCheck.rows[0].loan_amount),
-            loan_status: loanCheck.rows[0].status,
+            loan_number: loan.loan_number,
+            customer_name: loan.customer_name,
+            loan_type: loan.loan_type,
+            loan_amount: parseFloat(loan.loan_amount),
+            loan_status: loan.status,
             total_amount_paid: totalPaid,
             count: result.rows.length,
             data: result.rows
@@ -308,6 +351,7 @@ const getPaymentsByLoan = async (req, res) => {
  * Route: /api/loan-payments/:id
  *
  * Validates payment_id and returns payment record enriched with loan and customer details.
+ * Enforces ownership: Customer can only view payment details for their own loan (403 otherwise).
  * Returns 404 if payment record not found.
  */
 const getLoanPaymentById = async (req, res) => {
@@ -354,9 +398,21 @@ const getLoanPaymentById = async (req, res) => {
             });
         }
 
+        const payment = result.rows[0];
+
+        // Ownership Check: Customer can only view individual payment details for their own loan
+        if (req.user && req.user.role === 'Customer') {
+            if (!req.user.customer_id || Number(payment.customer_id) !== Number(req.user.customer_id)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Forbidden: You are not authorized to view this loan payment.'
+                });
+            }
+        }
+
         return res.status(200).json({
             success: true,
-            data: result.rows[0]
+            data: payment
         });
     } catch (err) {
         return handleDbError(err, res, `fetch loan payment with ID ${id}`);
